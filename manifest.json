@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "PrivateVault",
+  "version": "0.1.0",
+  "description": "Intent verification + cryptographic audit trails + async governance for AI workflows",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": [
+    "https://chat.openai.com/*",
+    "https://claude.ai/*",
+    "http://localhost:3000/*"
+  ],
+  "background": {
+    "service_worker": "src/background/service_worker.ts",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "PrivateVault",
+    "default_popup": "src/ui/popup/popup.html"
+  },
+  "options_page": "src/ui/options/options.html",
+  "content_scripts": [
+    {
+      "matches": ["https://chat.openai.com/*", "https://claude.ai/*"],
+      "js": ["src/content/injector.ts"],
+      "run_at": "document_idle"
+    }
+  ]
+}

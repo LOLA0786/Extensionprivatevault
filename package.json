@@ -1,0 +1,25 @@
+{
+  "name": "extensionprivatevault",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "extension",
+    "backend",
+    "shared"
+  ],
+  "scripts": {
+    "dev": "npm-run-all -p dev:backend dev:extension",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:extension": "cd extension && npm run dev",
+    "build": "npm-run-all -s build:shared build:backend build:extension",
+    "build:shared": "cd shared && npm run build",
+    "build:backend": "cd backend && npm run build",
+    "build:extension": "cd extension && npm run build",
+    "lint": "echo 'lint TBD'",
+    "test": "echo 'test TBD'",
+    "clean": "rm -rf **/dist **/build **/.turbo"
+  },
+  "devDependencies": {
+    "npm-run-all": "^4.1.5"
+  }
+}
