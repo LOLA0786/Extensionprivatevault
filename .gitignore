@@ -69,3 +69,6 @@ infra/terraform/.terraform.lock.hcl
 *.key
 *.crt
 secrets/
+
+# Extension build output
+extension/dist/

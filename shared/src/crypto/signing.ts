@@ -1,16 +1,17 @@
 /**
  * Digital signature utilities using Ed25519
+ *
+ * Compatible with modern @noble/ed25519 versions where:
+ * - ed25519.utils.randomPrivateKey() may not exist
+ * - use ed25519.utils.randomSecretKey()
+ * - ed25519.etc.sha512Sync may not exist / is not required
  */
 
-import * as ed25519 from '@noble/ed25519';
-import { sha512 } from '@noble/hashes/sha512';
-import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
-
-// Set up SHA-512 for ed25519
-ed25519.etc.sha512Sync = (...m: Uint8Array[]) => sha512(ed25519.etc.concatBytes(...m));
+import * as ed25519 from "@noble/ed25519";
+import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
 
 export interface KeyPair {
-  publicKey: string; // hex
+  publicKey: string;  // hex
   privateKey: string; // hex
 }
 
@@ -21,7 +22,8 @@ export interface SignedMessage {
 }
 
 export async function generateKeyPair(): Promise<KeyPair> {
-  const privateKey = ed25519.utils.randomPrivateKey();
+  // newer noble uses randomSecretKey()
+  const privateKey = ed25519.utils.randomSecretKey();
   const publicKey = await ed25519.getPublicKeyAsync(privateKey);
 
   return {
@@ -34,8 +36,8 @@ export async function sign(message: string, privateKeyHex: string): Promise<stri
   const messageBytes = new TextEncoder().encode(message);
   const privateKey = hexToBytes(privateKeyHex);
 
-  const signature = await ed25519.signAsync(messageBytes, privateKey);
-  return bytesToHex(signature);
+  const sig = await ed25519.signAsync(messageBytes, privateKey);
+  return bytesToHex(sig);
 }
 
 export async function verify(
@@ -47,10 +49,8 @@ export async function verify(
     const messageBytes = new TextEncoder().encode(message);
     const signature = hexToBytes(signatureHex);
     const publicKey = hexToBytes(publicKeyHex);
-
     return await ed25519.verifyAsync(signature, messageBytes, publicKey);
-  } catch (error) {
-    console.error('Signature verification error:', error);
+  } catch {
     return false;
   }
 }
@@ -61,12 +61,7 @@ export async function createSignedMessage(
   publicKeyHex: string
 ): Promise<SignedMessage> {
   const signature = await sign(message, privateKeyHex);
-
-  return {
-    message,
-    signature,
-    publicKey: publicKeyHex,
-  };
+  return { message, signature, publicKey: publicKeyHex };
 }
 
 export async function verifySignedMessage(signedMessage: SignedMessage): Promise<boolean> {
