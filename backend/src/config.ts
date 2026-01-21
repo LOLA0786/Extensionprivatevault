@@ -2,7 +2,7 @@
  * Backend configuration
  */
 
-import dotenv from 'dotenv';
+import * as dotenv from "dotenv";
 
 dotenv.config();
 

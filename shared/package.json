@@ -3,24 +3,34 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+      "import": "./dist/index.js"
+    },
+    "./dist/*": {
+      "types": "./dist/*.d.ts",
+      "import": "./dist/*.js"
+    },
+    "./dist/types/*": {
+      "types": "./dist/types/*.d.ts",
+      "import": "./dist/types/*.js"
+    },
+    "./dist/crypto/*": {
+      "types": "./dist/crypto/*.d.ts",
+      "import": "./dist/crypto/*.js"
     }
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "dev": "tsc -w",
-    "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@noble/ed25519": "^2.2.3",
-    "@noble/hashes": "^1.5.0"
-  },
-  "devDependencies": {
-    "typescript": "^5.7.3"
+    "@noble/ed25519": "^3.0.0",
+    "@noble/hashes": "^1.4.0"
   }
 }
