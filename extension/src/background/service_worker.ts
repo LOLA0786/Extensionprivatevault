@@ -1,127 +1,137 @@
-import { generateKeyPair, createKeyId, sign } from '@privatevault/shared';
-import { hashObject, sha256Hex } from '@privatevault/shared';
-import type { BatchIngestRequest } from '@privatevault/shared';
-import { postJSON } from '../transport/api_client';
-import { localVault } from '../core/vault/local_store';
+import { sha256Hex } from '@shared/crypto/hashing';
+import { generateKeyPair, sign, createKeyId } from '@shared/crypto/signing';
 
-// --- Config (MVP) ---
-const API_URL = 'http://localhost:3000';
-const DEV_USER_ID = 'local-dev-user';
-const DEVICE_ID = 'local-dev-device';
+type PVPromptMsg = {
+  type: 'PV_PROMPT';
+  source: string;
+  url: string;
+  pageTitle?: string;
+  prompt: string;
+  policy?: any;
+};
 
-let keypair: { publicKey: string; privateKey: string } | null = null;
+async function getOrCreateDeviceIdentity() {
+  const stored = await chrome.storage.local.get([
+    'pv_deviceId',
+    'pv_publicKey',
+    'pv_privateKey',
+    'pv_userId',
+    'pv_apiUrl'
+  ]);
 
-async function getOrCreateKeys() {
-  if (keypair) return keypair;
+  let deviceId = stored.pv_deviceId as string | undefined;
+  let userId = stored.pv_userId as string | undefined;
+  let publicKey = stored.pv_publicKey as string | undefined;
+  let privateKey = stored.pv_privateKey as string | undefined;
+  let apiUrl = (stored.pv_apiUrl as string | undefined) || 'http://localhost:3000';
 
-  const stored = await chrome.storage.local.get(['pv_keys']);
-  if (stored.pv_keys?.publicKey && stored.pv_keys?.privateKey) {
-    keypair = stored.pv_keys;
-    return keypair;
+  if (!deviceId) deviceId = 'local-dev-device';
+  if (!userId) userId = 'local-dev-user';
+
+  if (!publicKey || !privateKey) {
+    const kp = await generateKeyPair();
+    publicKey = kp.publicKey;
+    privateKey = kp.privateKey;
+
+    await chrome.storage.local.set({
+      pv_publicKey: publicKey,
+      pv_privateKey: privateKey
+    });
   }
 
-  const kp = await generateKeyPair();
-  keypair = kp;
-  await chrome.storage.local.set({ pv_keys: kp });
-  return kp;
+  await chrome.storage.local.set({ pv_deviceId: deviceId, pv_userId: userId, pv_apiUrl: apiUrl });
+
+  return { deviceId, userId, publicKey, privateKey, apiUrl };
 }
 
-function uuid() {
-  return crypto.randomUUID();
+async function getParentChainHash(): Promise<string | null> {
+  const stored = await chrome.storage.local.get(['pv_lastChainHash']);
+  return (stored.pv_lastChainHash as string) || null;
 }
 
-async function ingestEventToBackend(event: any, payload: any) {
-  const req: BatchIngestRequest = {
-    events: [{ event, payload }]
-  };
+async function setParentChainHash(chainHash: string) {
+  await chrome.storage.local.set({ pv_lastChainHash: chainHash });
+}
 
-  return await postJSON(`${API_URL}/v1/events/batch`, req, {
-    'x-dev-user-id': DEV_USER_ID
+function canonical(obj: any): string {
+  return JSON.stringify(obj, Object.keys(obj).sort());
+}
+
+async function ingestToBackend(apiUrl: string, userId: string, eventObj: any) {
+  const resp = await fetch(`${apiUrl}/v1/events/batch`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-dev-user-id': userId
+    },
+    body: JSON.stringify({ events: [eventObj] })
   });
+
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    throw new Error(`backend ingest failed: ${resp.status} ${text}`);
+  }
+
+  return resp.json().catch(() => ({}));
 }
 
-chrome.runtime.onMessage.addListener((msg) => {
-  console.log("[PrivateVault] SW got message:", msg);
+chrome.runtime.onMessage.addListener((msg: PVPromptMsg, _sender, sendResponse) => {
   (async () => {
-    const kp = await getOrCreateKeys();
+    if (!msg || msg.type !== 'PV_PROMPT') return;
 
-    if (msg.type === 'PV_PROMPT') {
-      const createdAt = new Date().toISOString();
+    const { deviceId, userId, publicKey, privateKey, apiUrl } = await getOrCreateDeviceIdentity();
 
-      const payload = {
-        source: msg.source,
-        url: msg.url,
-        ts: createdAt,
-        prompt: msg.prompt,
-        pageTitle: msg.pageTitle || ''
-      };
+    const ts = new Date().toISOString();
 
-      const intentHash = hashObject(payload);
+    const payload = {
+      source: msg.source,
+      url: msg.url,
+      ts,
+      prompt: msg.prompt,
+      pageTitle: msg.pageTitle || '',
+      policy: msg.policy || null
+    };
 
-      // Hash chain
-      const lastChainHash = await localVault.getKV<string>('lastChainHash');
-      const parentHash = lastChainHash || null;
+    const intentHash = sha256Hex(canonical(payload));
+    const parentHash = await getParentChainHash();
 
-      const chainHash = sha256Hex(`${parentHash || 'genesis'}|${intentHash}|${payload.ts}`);
-      const signature = await sign(chainHash, kp.privateKey);
-      const keyId = createKeyId(kp.publicKey);
+    const chainMaterial = canonical({
+      parentHash,
+      intentHash,
+      ts,
+      deviceId,
+      userId
+    });
 
-      const event = {
-        id: uuid(),
-        source: msg.source,
-        url: msg.url,
-        tsClient: payload.ts,
-        deviceId: DEVICE_ID,
-        userId: DEV_USER_ID,
-        intentHash,
-        parentHash,
-        chainHash,
-        signature,
-        publicKey: kp.publicKey,
-        keyId
-      };
+    const chainHash = sha256Hex(chainMaterial);
+    const signature = await sign(chainHash, privateKey);
 
-      // Save locally FIRST (local-first)
-      await localVault.putEvent({
-        id: event.id,
-        createdAt,
-        synced: false,
-        event,
-        payload
-      });
+    const event = {
+      id: crypto.randomUUID(),
+      source: msg.source,
+      url: msg.url,
+      tsClient: ts,
+      deviceId,
+      userId,
+      intentHash,
+      parentHash,
+      chainHash,
+      signature,
+      publicKey,
+      keyId: createKeyId(publicKey)
+    };
 
-      // Update chain head
-      await localVault.setKV('lastChainHash', chainHash);
+    const eventObj = { event, payload };
 
-      console.log('[PrivateVault] Vault saved event:', event.id);
+    await ingestToBackend(apiUrl, userId, eventObj);
 
-      // Sync (best-effort)
-      try {
-        const resp = await ingestEventToBackend(event, payload);
-        console.log('[PrivateVault] Backend ingest response:', resp);
+    await setParentChainHash(chainHash);
 
-        // Mark as synced
-        await localVault.putEvent({
-          id: event.id,
-          createdAt,
-          synced: true,
-          syncedAt: new Date().toISOString(),
-          event,
-          payload
-        });
-      } catch (e) {
-        console.warn('[PrivateVault] ingest failed (will remain local):', e);
-      }
-    }
-
-    if (msg.type === 'PV_LIST_LOCAL_EVENTS') {
-      const events = await localVault.listEvents(msg.limit || 25);
-      chrome.runtime.sendMessage({
-        type: 'PV_LOCAL_EVENTS_RESULT',
-        items: events
-      });
-    }
-  })();
+    sendResponse({ ok: true, eventId: event.id });
+  })().catch((err) => {
+    console.error('[PrivateVault] service worker error:', err);
+    sendResponse({ ok: false, error: String(err?.message || err) });
+  });
 
   return true;
 });
