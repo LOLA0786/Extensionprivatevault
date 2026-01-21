@@ -78,3 +78,27 @@ docker-rebuild: ## Rebuild Docker images
 docker-clean: ## Clean Docker volumes and images
 	docker-compose down -v
 	docker system prune -f
+
+typecheck-extension:
+	@cd extension && npx tsc --noEmit
+
+
+# -----------------------------
+# Extension targets
+# -----------------------------
+
+build-extension:
+	@cd extension && npm run build
+
+lint-extension:
+	@cd extension && npm run lint
+
+typecheck-extension:
+	@cd extension && npx tsc --noEmit
+
+verify-extension:
+	@echo "✅ Verifying extension: build + typecheck + lint"
+	@$(MAKE) build-extension
+	@$(MAKE) typecheck-extension
+	@$(MAKE) lint-extension
+	@echo "🎉 verify-extension complete"

@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "package": "node -e \"console.log('packaging TBD')\""
+    "package": "node -e \"console.log('packaging TBD')\"",
+    "typecheck": "tsc --noEmit",
+    "smoke": "node ./scripts/smoke.mjs",
+    "smoke:policy": "tsx scripts/smoke_policy.ts"
   },
   "dependencies": {
     "@crxjs/vite-plugin": "^2.0.0-beta.26",
@@ -19,7 +22,11 @@
     "@types/chrome": "^0.0.280",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
+    "@typescript-eslint/eslint-plugin": "^8.53.1",
+    "@typescript-eslint/parser": "^8.53.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^9.39.2",
+    "tsx": "^4.21.0",
     "typescript": "^5.7.3",
     "vite": "^5.4.11"
   }

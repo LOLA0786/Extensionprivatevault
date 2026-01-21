@@ -1,4 +1,5 @@
 import { scanPrompt } from '../core/policy/policy_scan';
+import { safeSendMessage } from "./runtime_safe";
 import { showPolicyBanner } from './policy_banner';
 
 console.log('[PrivateVault] content script loaded at', window.location.href);
@@ -42,7 +43,7 @@ function emitPrompt(raw: string) {
   const policy = scanPrompt(prompt);
   showPolicyBanner(prompt, policy);
 
-  chrome.runtime.sendMessage({
+  safeSendMessage({
     type: 'PV_PROMPT',
     source: 'chatgpt',
     url: window.location.href,
