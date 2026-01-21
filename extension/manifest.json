@@ -3,9 +3,10 @@
   "name": "PrivateVault",
   "version": "0.1.0",
   "description": "Intent verification + cryptographic audit trails + async governance for AI workflows",
-  "permissions": ["storage", "activeTab", "scripting"],
+  "permissions": ["storage"],
   "host_permissions": [
     "https://chat.openai.com/*",
+    "https://chatgpt.com/*",
     "https://claude.ai/*",
     "http://localhost:3000/*"
   ],
@@ -20,9 +21,13 @@
   "options_page": "src/ui/options/options.html",
   "content_scripts": [
     {
-      "matches": ["https://chat.openai.com/*", "https://claude.ai/*"],
+      "matches": [
+        "https://chat.openai.com/*",
+        "https://chatgpt.com/*",
+        "https://claude.ai/*"
+      ],
       "js": ["src/content/injector.ts"],
-      "run_at": "document_idle"
+      "run_at": "document_end"
     }
   ]
 }

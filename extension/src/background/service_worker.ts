@@ -41,6 +41,7 @@ async function ingestEventToBackend(event: any, payload: any) {
 }
 
 chrome.runtime.onMessage.addListener((msg) => {
+  console.log("[PrivateVault] SW got message:", msg);
   (async () => {
     const kp = await getOrCreateKeys();
 

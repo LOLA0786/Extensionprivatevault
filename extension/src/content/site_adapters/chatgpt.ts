@@ -1,20 +1,23 @@
 /**
  * ChatGPT site adapter
- * More robust selectors
+ * Handles DOM interaction with chatgpt.com + chat.openai.com
  */
 
 import type { SiteAdapter } from '../../core/types';
 
 const CHATGPT_SELECTORS = {
   promptInput: 'textarea',
-  submitButton: 'button[data-testid="send-button"], button[aria-label*="Send"]',
+  submitButton: 'button[data-testid="send-button"], button[aria-label*="Send"]'
 };
 
 export const chatGPTAdapter: SiteAdapter = {
   name: 'chatgpt',
 
   detect(): boolean {
-    return window.location.hostname === 'chat.openai.com';
+    return (
+      window.location.hostname === 'chat.openai.com' ||
+      window.location.hostname === 'chatgpt.com'
+    );
   },
 
   getPromptText(): string | null {
@@ -23,7 +26,6 @@ export const chatGPTAdapter: SiteAdapter = {
   },
 
   getResponseText(): string | null {
-    // best-effort: grab last assistant message
     const nodes = document.querySelectorAll<HTMLElement>('.markdown');
     const last = nodes[nodes.length - 1];
     return last?.innerText || null;
@@ -43,7 +45,6 @@ export const chatGPTAdapter: SiteAdapter = {
 
     input?.addEventListener('keydown', handler);
 
-    // also try send button click
     const btn = document.querySelector<HTMLButtonElement>(CHATGPT_SELECTORS.submitButton);
     const clickHandler = () => {
       const prompt = input?.value;
@@ -65,5 +66,5 @@ export const chatGPTAdapter: SiteAdapter = {
 
     observer.observe(document.body, { childList: true, subtree: true });
     return () => observer.disconnect();
-  },
+  }
 };
