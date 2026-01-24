@@ -135,3 +135,170 @@ chrome.runtime.onMessage.addListener((msg: PVPromptMsg, _sender, sendResponse) =
 
   return true;
 });
+
+// ===============================
+// PrivateVault: Blocked Prompt Queue (bulk ingest)
+// ===============================
+
+type PVBlockedEvent = {
+  category: string;
+  meta?: any;
+  ts: string;
+};
+
+const PV_BLOCKED_QUEUE_KEY = 'pv_blocked_queue_v1';
+const PV_BLOCKED_FLUSH_INTERVAL_MS = 10_000;
+const PV_BLOCKED_MAX_RETRIES = 3;
+
+let pvBlockedFlushTimer: number | null = null;
+
+async function pvBlockedGetQueue(): Promise<Array<{ ev: PVBlockedEvent; retries: number }>> {
+  const data = await chrome.storage.local.get(PV_BLOCKED_QUEUE_KEY);
+  return Array.isArray(data[PV_BLOCKED_QUEUE_KEY]) ? data[PV_BLOCKED_QUEUE_KEY] : [];
+}
+
+async function pvBlockedSetQueue(q: Array<{ ev: PVBlockedEvent; retries: number }>) {
+  await chrome.storage.local.set({ [PV_BLOCKED_QUEUE_KEY]: q });
+}
+
+function pvBlockedScheduleFlush() {
+  if (pvBlockedFlushTimer !== null) return;
+  pvBlockedFlushTimer = setTimeout(() => pvBlockedFlush(), PV_BLOCKED_FLUSH_INTERVAL_MS) as unknown as number;
+}
+
+async function pvBlockedEnqueue(ev: PVBlockedEvent) {
+  const q = await pvBlockedGetQueue();
+  q.push({ ev, retries: 0 });
+  await pvBlockedSetQueue(q);
+  pvBlockedScheduleFlush();
+}
+
+async function pvBlockedFlush() {
+  pvBlockedFlushTimer = null;
+
+  const q = await pvBlockedGetQueue();
+  if (q.length === 0) return;
+
+  const events = q.map((x) => x.ev);
+
+  try {
+    const base = 'http://localhost:3000';
+
+    const res = await fetch(`${base}/blocked/bulk`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ events }),
+    });
+
+    if (!res.ok) throw new Error('blocked bulk failed');
+
+    // success
+    await pvBlockedSetQueue([]);
+  } catch {
+    // retry
+    const updated = q
+      .map((x) => ({ ...x, retries: (x.retries ?? 0) + 1 }))
+      .filter((x) => (x.retries ?? 0) < PV_BLOCKED_MAX_RETRIES);
+
+    await pvBlockedSetQueue(updated);
+    if (updated.length > 0) pvBlockedScheduleFlush();
+  }
+}
+
+// Single handler for blocked prompts coming from content scripts
+chrome.runtime.onMessage.addListener((message: any, _sender, sendResponse) => {
+  if (!message || typeof message !== 'object') return;
+
+  if (message.type === 'logBlockedEvent') {
+    pvBlockedEnqueue({
+      category: String(message.category || ''),
+      meta: message.meta ?? {},
+      ts: new Date().toISOString(),
+    })
+      .then(() => sendResponse?.({ queued: true }))
+      .catch((e) => sendResponse?.({ queued: false, error: e?.message }));
+    return true;
+  }
+
+  // debug helpers
+  if (message.type === 'pvDebugBlockedQueueGet') {
+    pvBlockedGetQueue()
+      .then((q) => sendResponse?.({ ok: true, size: q.length, q }))
+      .catch((e) => sendResponse?.({ ok: false, error: e?.message }));
+    return true;
+  }
+
+  if (message.type === 'pvDebugBlockedQueueFlush') {
+    pvBlockedFlush()
+      .then(() => sendResponse?.({ ok: true }))
+      .catch((e) => sendResponse?.({ ok: false, error: e?.message }));
+    return true;
+  }
+});
+
+// Flush scheduling
+chrome.runtime.onStartup.addListener(() => pvBlockedScheduleFlush());
+chrome.runtime.onInstalled.addListener(() => pvBlockedScheduleFlush());
+
+// --- PV DEBUG: log all runtime messages ---
+chrome.runtime.onMessage.addListener((m: any) => {
+  try {
+    console.log('[PV][SW] onMessage', m);
+  } catch {}
+});
+
+// --- PV DEBUG: prove SW receives blocked events ---
+chrome.runtime.onMessage.addListener((m: any, _sender, sendResponse) => {
+  if (m?.type === 'logBlockedEvent') {
+    console.log('[PV][SW] RECEIVED logBlockedEvent', m);
+    sendResponse?.({ ok: true });
+    return true;
+  }
+});
+
+// ===============================
+// PV: Port receiver for blocked events (reliable MV3)
+// ===============================
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== 'pv_blocked_port') return;
+
+  port.onMessage.addListener(async (m: any) => {
+    if (!m || m.type !== 'logBlockedEvent') return;
+
+    // immediate write so you can verify in storage
+    const key = 'pv_blocked_queue_v1';
+    const data = await chrome.storage.local.get(key);
+    const q = Array.isArray(data[key]) ? data[key] : [];
+
+    q.push({
+      ev: { category: String(m.category || ''), meta: m.meta ?? {}, ts: new Date().toISOString() },
+      retries: 0,
+    });
+
+    await chrome.storage.local.set({ [key]: q });
+    console.log('[PV][SW] queued blocked via port', q.length);
+  });
+});
+
+// ===============================
+// PV: Port receiver for blocked events (reliable MV3)
+// ===============================
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== 'pv_blocked_port') return;
+
+  port.onMessage.addListener(async (m: any) => {
+    if (!m || m.type !== 'logBlockedEvent') return;
+
+    const key = 'pv_blocked_queue_v1';
+    const data = await chrome.storage.local.get(key);
+    const q = Array.isArray(data[key]) ? data[key] : [];
+
+    q.push({
+      ev: { category: String(m.category || ''), meta: m.meta ?? {}, ts: new Date().toISOString() },
+      retries: 0,
+    });
+
+    await chrome.storage.local.set({ [key]: q });
+    console.log('[PV][SW] queued blocked via port', q.length);
+  });
+});
