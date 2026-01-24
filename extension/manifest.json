@@ -8,6 +8,10 @@
     "https://chat.openai.com/*",
     "https://chatgpt.com/*",
     "https://claude.ai/*",
+    "https://gemini.google.com/*",
+    "https://grok.x.ai/*",
+    "https://grok.com/*",
+    "https://www.perplexity.ai/*",
     "http://localhost:3000/*"
   ],
   "background": {
@@ -24,10 +28,15 @@
       "matches": [
         "https://chat.openai.com/*",
         "https://chatgpt.com/*",
-        "https://claude.ai/*"
+        "https://claude.ai/*",
+        "https://gemini.google.com/*",
+        "https://grok.x.ai/*",
+        "https://grok.com/*",
+        "https://www.perplexity.ai/*"
       ],
       "js": ["src/content/injector.ts"],
-      "run_at": "document_end"
+      "run_at": "document_end",
+      "all_frames": false
     }
   ]
 }
